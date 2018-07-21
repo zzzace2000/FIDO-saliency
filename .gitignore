@@ -1,0 +1,4 @@
+*.pyc
+.idea/
+exp/imagenet
+exp/vbd_imagenet/generative_inpainting
