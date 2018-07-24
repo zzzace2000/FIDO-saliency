@@ -1,6 +1,6 @@
 # Explaining Image Classifiers by Adaptive Dropout and Generative In-filling 	
 
-[ArXiv] | [BibTex](#citing)
+[ArXiv](https://arxiv.org/abs/1807.08024) | [BibTex](#citing)
 
 This is the code for reproducing the paper result. We show that using generative model could help explain neural network compared to other heuristics approach.
 
@@ -47,5 +47,10 @@ The software is for educaitonal and academic research purpose only.
 
 ## Citing
 ```
-
+@article{chang2018explaining,
+  title={Explaining Image Classifiers by Adaptive Dropout and Generative In-filling},
+  author={Chang, Chun-Hao and Creager, Elliot and Goldenberg, Anna and and Duvenaud, David},
+  journal={arXiv preprint arXiv:1807.08024},
+  year={2018}
+}
 ```
