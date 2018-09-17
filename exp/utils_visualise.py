@@ -5,6 +5,8 @@ Some utility functions for visualisation, not documented properly
 
 from skimage import color
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import pylab

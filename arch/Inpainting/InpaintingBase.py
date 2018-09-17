@@ -1,7 +1,8 @@
 import torch.nn as nn
 from torch.autograd import Variable
 import torch
-from .Baseline import InpaintTemplate
+#from .Baseline import InpaintTemplate
+from Baseline import InpaintTemplate  # hacking
 
 
 class InpaintingBase(InpaintTemplate):

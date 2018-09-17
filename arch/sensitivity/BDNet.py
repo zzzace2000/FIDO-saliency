@@ -9,6 +9,7 @@ import torch.optim as optim
 from .DNetBase import DNetBase
 from arch.binary.ConcreteNeuron import concrete_dropout_neuron, multiclass_concrete_neuron
 from torch.distributions import Bernoulli
+from arch.Inpainting.Baseline import MeanInpainter
 
 
 def logit(x):

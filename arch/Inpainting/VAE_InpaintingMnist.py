@@ -36,7 +36,7 @@ class VAE_InpaintingMnist(VAEInpaintingBase):
     @staticmethod
     def decouple(params, channel_num=None):
         if channel_num is None:
-            channel_num = params.size(1) / 2
+            channel_num = params.size(1) // 2
 
         mu = params[:, :channel_num, :, :]
         logvar = params[:, channel_num:, :, :]
@@ -70,10 +70,12 @@ class VAE_InpaintingMnist(VAEInpaintingBase):
 
 
 if __name__ == '__main__':
-    test = torch.rand(1, 1, 28, 28)
-    mask = torch.rand(1, 1, 28, 28).round()
+    im_shape = (12, 12)
+    test = torch.rand(1, 1, *im_shape)
+    mask = torch.rand(1, 1, *im_shape).round()
 
     net = VAE_InpaintingMnist(num_training=50000)
 
     result = net.forward(Variable(test), Variable(mask))
+    print(test.size(), mask.size())
     print(result[0].size())

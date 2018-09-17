@@ -16,7 +16,6 @@ from exp.utils_flipping import get_logodds_by_flipping
 
 from arch.sensitivity.BBMPNet import BBMP_SDR_Generative, BBMP_SSR_Generative
 import torch.nn.functional as F
-import tensorflow as tf
 import visdom
 import utils_model
 
@@ -149,7 +148,6 @@ def parse_args():
     args = parser.parse_args()
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    tf.set_random_seed(args.seed)
 
     # If use bbmp, batch size needs to be 1
     if args.importance_method.startswith('bbmp'):

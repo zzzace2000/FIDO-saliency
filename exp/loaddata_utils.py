@@ -116,6 +116,8 @@ def load_data(path='../data/mnist.pkl.gz'):
 class ImageNetLoadClass:
     def __init__(self, imagenet_folder='imagenet/', dataset='train/', resize=224):
         self.imagenet_folder = imagenet_folder
+        imagenet_parent_folder = os.path.dirname(os.path.dirname(imagenet_folder))
+        self.imagenet_metadata_folder = os.path.join(imagenet_parent_folder, 'imagenet_metadata/')
         self.dataset = dataset
         self.resize = resize # For the different input size for inception_v3
 
@@ -129,7 +131,8 @@ class ImageNetLoadClass:
         self.img_width = the_img.size(2)
 
         self.coord_dict = {} # map from ILSVRC2012_val_00037956 to ('n03995372', [85 1 499 272])
-        with open(os.path.join(imagenet_folder, 'LOC_val_solution.csv')) as fp:
+        #with open(os.path.join(imagenet_folder, 'LOC_val_solution.csv')) as fp:
+        with open(os.path.join(self.imagenet_metadata_folder, 'LOC_val_solution.csv')) as fp:
             fp.readline()
             for line in fp:
                 line = line.strip().split(',')
@@ -251,6 +254,8 @@ class ImageNetLoadClass:
         return new_coord
 
     def _draw_bounding_box(self, image, coord):
+        import matplotlib
+        matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
         from exp.utils_visualise import plot_pytorch_img
@@ -274,8 +279,10 @@ class ImageNetLoadClass:
 
     def _get_id_to_class_dict(self):
         the_dict = {}
-        with open(os.path.join(self.imagenet_folder, 'class_names.txt')) as fp1, \
-            open(os.path.join(self.imagenet_folder, 'synsets.txt')) as fp2:
+        with open(os.path.join(self.imagenet_metadata_folder, 'class_names.txt')) as fp1, \
+            open(os.path.join(self.imagenet_metadata_folder, 'synsets.txt')) as fp2:
+        #with open(os.path.join(self.imagenet_folder, 'class_names.txt')) as fp1, \
+            #open(os.path.join(self.imagenet_folder, 'synsets.txt')) as fp2:
             for name, id in zip(fp1, fp2):
                 name = name.strip()
                 id = id.strip()
@@ -295,7 +302,7 @@ class ImageNetLoadClass:
         transform = transforms.Compose(arr)
 
         img_folder = datasets.ImageFolder(
-            os.path.join(self.imagenet_folder, self.dataset), transform)
+            os.path.join(self.imagenet_folder, self.dataset if 'train' in self.dataset else 'val/'), transform)  # compatability with vector imagenet
         return img_folder
 
     @staticmethod
