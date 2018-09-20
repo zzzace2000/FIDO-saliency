@@ -6,26 +6,40 @@ from torch.utils.data import Dataset
 
 class MixtureOfBlocks(Dataset):
     im_shape = (1, 28, 28)
+    num_labels = 16
+    block_width = 8  # edge size of block in pixels
+    noise_level = .05
+    offset = 4  # row/column offset from edges
+
     def __init__(self, num_samples, train=True):
         super(MixtureOfBlocks, self).__init__()
-        labels = np.random.choice(range(9), ((num_samples, )))
+        labels = np.random.choice(range(self.num_labels), ((num_samples, )))
         beta_samples = np.random.beta(5., 1., size=((num_samples, )))  # should probably seed the RNG here...
         samples = np.stack([self.generate_image(b, label) for b, label in zip(beta_samples, labels)], 0)
         self.num_samples = num_samples
         self.labels, self.samples = torch.Tensor(labels).unsqueeze(1), torch.Tensor(samples)
         self.train = train  # for bookeeping purposes
 
-    def generate_image(self, beta_sample, label):
-        #n_pixels_per_edge = self.im_shape[1]
-        n_blocks_per_edge = 3
-        width = 14  # edge size of block in pixels
-        stride = width // 2
+    @staticmethod
+    def generate_image(beta_sample, label):
+        #im = np.zeros(self.im_shape)  # noiseless
+        im = MixtureOfBlocks.noise_level*np.random.randn(*MixtureOfBlocks.im_shape)  # background noise
+        row_start, row_end, col_start, col_end = MixtureOfBlocks._label_to_patch_pixels(
+                label, MixtureOfBlocks.block_width, MixtureOfBlocks.block_width//2
+                )
+        im[0, row_start:row_end, col_start:col_end] += beta_sample 
+        return im
+
+    @staticmethod
+    def _label_to_patch_pixels(label, block_width, stride):
+        n_blocks_per_edge = int(MixtureOfBlocks.num_labels ** 0.5)
         row_idx = label // n_blocks_per_edge
         col_idx = label % n_blocks_per_edge
-        #im = np.zeros(self.im_shape)  # noiseless
-        im = 0.2*np.random.randn(*self.im_shape)  # background noise
-        im[0, row_idx*stride:row_idx*stride+width, col_idx*stride:col_idx*stride+width] += beta_sample 
-        return im
+        row_start = row_idx*stride+MixtureOfBlocks.offset
+        row_end = row_start+block_width
+        col_start = col_idx*stride+MixtureOfBlocks.offset
+        col_end = col_start+block_width 
+        return row_start, row_end, col_start, col_end
 
     def __len__(self):
         return self.num_samples

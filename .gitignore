@@ -2,3 +2,4 @@
 .idea/
 exp/imagenet
 exp/vbd_imagenet/generative_inpainting
+.ipynb_checkpoints
