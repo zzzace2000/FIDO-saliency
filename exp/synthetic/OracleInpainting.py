@@ -6,7 +6,7 @@ import torchvision
 
 from median_pool import MedianPool2d
 from datasets import MixtureOfBlocks
-from arch.Inpainting.Baseline import InpaintTemplate
+from arch.Inpainting.Baseline import InpaintTemplate, BlurryInpainter, LocalMeanInpainter, MeanInpainter
 
 
 class OracleInpainting(InpaintTemplate):
@@ -19,7 +19,7 @@ class OracleInpainting(InpaintTemplate):
                 kernel_size=MixtureOfBlocks.block_width,
                 stride=MixtureOfBlocks.block_width//2)
 
-    def impute_missing_images(self, x, mask):
+    def impute_missing_imgs(self, x, mask):
         # 1) apply mask, apply filter and compute label probs
         label_probs = self.infer_label_probs(x, mask)
         # 2) sample a label
@@ -31,8 +31,7 @@ class OracleInpainting(InpaintTemplate):
                 MixtureOfBlocks.generate_image(beta, label)
                 ) for label, beta in zip(label_samps, betas)], 0)
         # 4) return mixture of mask*x and (1-masked)*infill
-        return (1. - mask)*x + mask*infill, infill, label_samps
-        #return x + infill, infill
+        return (1. - mask)*x + mask*infill
 
     def infer_label_probs(self, x, mask, imshape=False):
         xm =  (1. - mask)*x + mask*MixtureOfBlocks.noise_level*torch.randn(*mask.shape)
@@ -93,12 +92,12 @@ if __name__ == '__main__':
     from datasets import mixture_of_blocks
 
 
-    p = 0.4
+    p = 0.2
 
     num_samples = 512
     batch_size = 64
     seed = 0
-    plot = False  # set to true if using the jupyter notebook to viz
+    plot = True  # set to true if using the jupyter notebook to viz
 
     loader = mixture_of_blocks(num_samples, batch_size, seed)
     mode = 'median'
@@ -111,14 +110,18 @@ if __name__ == '__main__':
             stride=MixtureOfBlocks.block_width//2)
     f = lambda x: filt(Variable(x + MixtureOfBlocks.noise_level*torch.randn(*x.shape)))  # annoying workaround...
 
-    inpainter = OracleInpainting(mode)
+    #inpainter = OracleInpainting(mode)
+    #inpainter = LocalMeanInpainter(ndim=1)  # baseline
+    inpainter = MeanInpainter()  # baseline
+
 
     for i, (x, y) in enumerate(loader):
         im_shape = x.shape[-2:]
-        #mb = random_mask_batch(batch_size, im_shape, p)
-        mb = random_half_block_mask_batch(batch_size, im_shape, labels=y.long().squeeze().numpy())
-        pl = inpainter.infer_label_probs(x, mb, True).data
-        z, c, ls = inpainter.impute_missing_images(x, mb)
+        mb = random_mask_batch(batch_size, im_shape, p)  # random mask
+        #mb = random_half_block_mask_batch(batch_size, im_shape, labels=y.long().squeeze().numpy())  # "correct" mask
+        if isinstance(inpainter, OracleInpainting):
+            pl = inpainter.infer_label_probs(x, mb, True).data
+        z = inpainter.impute_missing_imgs(x, mb)
         xm = x*(1. - mb)
         cont = lambda t: t[:, :, 1:-1, 1:-1].contiguous()  # cut down to 4x4
         yhat_probs = F.softmax(cont(f(xm)).view(batch_size, -1), 1)
@@ -135,17 +138,12 @@ if __name__ == '__main__':
                     #nrow=int(batch_size ** 0.5), pad_value=1., range=[0., 1.])
             save_image(x, '{}/masked-blocks-{}-x.png'.format(dirname, i), 
                     nrow=int(batch_size ** 0.5), pad_value=1., range=[0., 1.])
-            save_image(pl, '{}/masked-blocks-{}-probs.png'.format(dirname, i), 
-                    nrow=int(batch_size ** 0.5), pad_value=1., range=[0., 1.])
-            save_image(c, '{}/masked-blocks-{}-infill.png'.format(dirname, i), 
-                    nrow=int(batch_size ** 0.5), pad_value=1., range=[0., 1.])
+            if isinstance(inpainter, OracleInpainting):
+                save_image(pl, '{}/masked-blocks-{}-probs.png'.format(dirname, i), 
+                        nrow=int(batch_size ** 0.5), pad_value=1., range=[0., 1.])
             save_image(z, '{}/masked-blocks-{}-impute.png'.format(dirname, i), 
                     nrow=int(batch_size ** 0.5), pad_value=1., range=[0., 1.])
-
-        #print('gt y       ', y )
-        #print('label samps', ls)
-
-        #break
+            break  # in plot mode we only process one batch
 
     print('done')
 

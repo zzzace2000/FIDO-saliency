@@ -26,9 +26,11 @@ class MeanInpainter(InpaintTemplate):
 
 
 class LocalMeanInpainter(InpaintTemplate):
-    def __init__(self, window=15):
+    def __init__(self, window=15, ndim=3):
         super(LocalMeanInpainter, self).__init__()
         self.window = window
+        1/0
+        self.ndim = ndim  # set to 1 for greyscale single channel images
 
         padding = int((window - 1) / 2)
         self.conv1 = nn.Conv2d(1, 1, kernel_size=window, padding=padding, bias=False)
@@ -41,7 +43,7 @@ class LocalMeanInpainter(InpaintTemplate):
     def generate_background(self, x, mask):
         zero_x = x * mask
         result = []
-        for i in range(3):
+        for i in range(self.ndim):
             result.append(self.conv1(Variable(zero_x[:, i:(i + 1), :, :], volatile=True)).data)
         sum_of_adjaent_pixels = torch.cat(result, dim=1)
 
