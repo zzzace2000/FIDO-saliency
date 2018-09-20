@@ -12,11 +12,13 @@ if __name__ == '__main__':
     batch_size = 64
     seed = 0
     im_shape = (28, 28)
-    num_epochs = 10
-    learning_rate = 0.01 
+    num_epochs = 1
+    learning_rate = 0.001 
+    checkpoint_filename = 'foo.pth'
+    train = False
 
     loader = mixture_of_blocks(num_samples, batch_size, seed)
-    if False:  # neural net
+    if True:  # neural net
         classifier = nn.Sequential(
                 nn.Linear(int(np.prod(im_shape)), 400),
                 nn.LeakyReLU(),
@@ -30,18 +32,31 @@ if __name__ == '__main__':
         classifier = nn.Sequential(
                 nn.Linear(int(np.prod(im_shape)), MixtureOfBlocks.num_labels),
                 )
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(classifier.parameters(), learning_rate)
+    if train:  # train from scratch
+        loss_fn = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(classifier.parameters(), learning_rate)
 
-    for e in range(num_epochs):
+        for e in range(num_epochs):
+            for i, (x, y) in enumerate(loader):
+                x = Variable(x.view(len(x), -1), requires_grad=False)
+                y = Variable(y.long().squeeze(), requires_grad=False)
+                yhat = torch.max(classifier(x), 1)[1]
+                acc = yhat.eq(y).float().sum() / len(y)
+                optimizer.zero_grad()
+                loss = loss_fn(classifier(x), y)
+                loss.backward()
+                optimizer.step()
+                print(e, i, *loss.data.numpy(), *acc.data.numpy())
+
+        torch.save(classifier.state_dict(), checkpoint_filename)
+    else:  # load params from disk and eval
+        classifier.load_state_dict(torch.load(checkpoint_filename))
         for i, (x, y) in enumerate(loader):
-            x = Variable(x.view(batch_size, -1), requires_grad=False)
+            x = Variable(x.view(len(x), -1), requires_grad=False)
             y = Variable(y.long().squeeze(), requires_grad=False)
             yhat = torch.max(classifier(x), 1)[1]
             acc = yhat.eq(y).float().sum() / len(y)
-            optimizer.zero_grad()
-            loss = loss_fn(classifier(x), y)
-            loss.backward()
-            optimizer.step()
-            print(e, i, *loss.data.numpy(), *acc.data.numpy())
+            print(*acc.data.numpy())
+            break
 
+    print('done')
