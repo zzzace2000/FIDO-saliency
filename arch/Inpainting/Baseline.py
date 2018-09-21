@@ -29,7 +29,6 @@ class LocalMeanInpainter(InpaintTemplate):
     def __init__(self, window=15, ndim=3):
         super(LocalMeanInpainter, self).__init__()
         self.window = window
-        1/0
         self.ndim = ndim  # set to 1 for greyscale single channel images
 
         padding = int((window - 1) / 2)

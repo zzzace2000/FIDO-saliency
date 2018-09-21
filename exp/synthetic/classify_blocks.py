@@ -17,7 +17,7 @@ if __name__ == '__main__':
     checkpoint_filename = 'foo.pth'
     train = False
 
-    loader = mixture_of_blocks(num_samples, batch_size, seed)
+    loader, _ = mixture_of_blocks(num_samples, batch_size, seed)
     if True:  # neural net
         classifier = nn.Sequential(
                 nn.Linear(int(np.prod(im_shape)), 400),

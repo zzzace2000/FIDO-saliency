@@ -41,7 +41,7 @@ def main(args, importance_func, impant_model, interpret_net):
 
         output_file = '%s/%s_records.th' % (args.save_dir, img_filename)
         if not args.overwrite and os.path.exists(output_file):
-            print('Already evaluate for the img idx %d' % img_idx)
+            print('Already evaluate for the img idx %d; see %s' % (img_idx, output_file))
             continue
 
         # Take out one mnist image and unnormalize it

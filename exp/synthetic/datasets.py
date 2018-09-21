@@ -49,7 +49,6 @@ class MixtureOfBlocks(Dataset):
         return x, y
 
 
-
 def MaskedMixtureOfBlocks(num_samples):
     """generate training data to train the in-filling network"""
     def __init__(self, num_samples, train=True):
@@ -62,13 +61,13 @@ def mixture_of_blocks(num_samples, batch_size, seed=None,
     if seed is not None:
         torch.manual_seed(seed)
     loader_kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
-    dataset_kwargs = dict()
+    dataset = MixtureOfBlocks(num_samples, train=True)
     train_loader = torch.utils.data.DataLoader(
-            MixtureOfBlocks(num_samples, train=True),
+            dataset,
             batch_size=batch_size, 
             shuffle=True, 
             **loader_kwargs)
-    return train_loader
+    return train_loader, dataset
 
 
 if __name__ == '__main__':
@@ -83,7 +82,7 @@ if __name__ == '__main__':
     batch_size = 16
     seed = 0
 
-    mob = mixture_of_blocks(num_samples, batch_size, seed)
+    mob, _ = mixture_of_blocks(num_samples, batch_size, seed)
     for i, (x, y) in enumerate(mob):
         print(i, x.shape, torch.norm(x), y)
         save_image(x, '{}/foo{}.png'.format(dirname, i), nrow=int(batch_size ** 0.5))
