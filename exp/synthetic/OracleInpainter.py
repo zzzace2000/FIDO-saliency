@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torchvision
 
 from median_pool import MedianPool2d
-from datasets import Blocks, random_mask_batch, random_half_block_mask_batch
+from datasets import Blocks, random_mask_batch, random_half_block_mask_batch, MixtureDataset
 from arch.Inpainting.Baseline import InpaintTemplate, BlurryInpainter, LocalMeanInpainter, MeanInpainter
 
 
@@ -58,25 +58,57 @@ class HeuristicInpainter(InpaintTemplate):
             return label_probs
 
 
+class OracleInpainter(InpaintTemplate):
+    """Inpainting by sampling from the ground truth conditional distn"""
+    def __init__(self, dataset):
+        super(OracleInpainter, self).__init__()
+        assert isinstance(dataset, MixtureDataset), 'unsupported dataset'
+        self.dataset = dataset
+
+    def impute_missing_imgs(self, x, mask):
+        backgnd = self.generate_background(x, mask)
+        return x * mask + backgnd * (1. - mask)
+
+    def generate_background(self, x, mask, sample=True):
+        """set sample to False to get the MAP configuration"""
+        logp_xmIxnm = self.dataset.logp_xmIxnm(x, mask, False)
+        if True:
+            from torchvision.utils import save_image
+            save_image(logp_xmIxnm.exp(), 
+                    'plots/OracleInpainter/p_xmIxnm.png',
+                    nrow=int(len(x) ** 0.5), pad_value=1., range=[0., 1.]
+                    )
+        if sample:
+            px = torch.distributions.Bernoulli(logp_xmIxnm.exp()) 
+            h = px.sample()
+            if True:
+                from torchvision.utils import save_image
+                save_image(h, 
+                        'plots/OracleInpainter/samp.png',
+                        nrow=int(len(x) ** 0.5), pad_value=1., range=[0., 1.]
+                        )
+            return h
+        else:
+            return (logp_xmIxnm > 0.).float()
+
 
 def parse_args():
     # Training settings
     parser = argparse.ArgumentParser(description='Try oracle inpainter on mixture of blocks data')
     parser.add_argument('--p', type=float, default=.1, help='Bernoulli prob for random mask')
     parser.add_argument('--mode', type=str, default='median', help='Mode of oracle inpainter (median or avg)')
-    parser.add_argument('--num-examples', type=int, default=1, help='number of training data')
-    parser.add_argument('--batch-size', type=int, default=4, metavar='N',
+    parser.add_argument('--num-examples', type=int, default=16, help='number of training data')
+    parser.add_argument('--batch-size', type=int, default=16, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--gen-model-name', type=str,
-                        default='HeuristicInpainter',
-                        help='choose from [HeuristicInpainter, MeanInpainter, LocalMeanInpainter]')
+                        default='OracleInpainter',
+                        help='choose from [HeuristicInpainter, MeanInpainter, LocalMeanInpainter, OracleInpainter]')
     parser.add_argument('--mask-name', type=str,
                         default='halfblock',
                         help='choose from [halfblock, random]')
-
 
     args = parser.parse_args()
     np.random.seed(args.seed)
@@ -89,10 +121,6 @@ def parse_args():
 if __name__ == '__main__':
     import os
     from torchvision.utils import save_image
-
-    dirname = './plots/HeuristicInpainter'
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
 
     from datasets import mixture_of_shapes
 
@@ -110,12 +138,19 @@ if __name__ == '__main__':
 
     if args.gen_model_name == 'HeuristicInpainter':
         inpainter = HeuristicInpainter(args.mode)
-    elif args.gen_model_name == 'LocalMeanInpatinter':
+    elif args.gen_model_name == 'OracleInpainter':
+        inpainter = OracleInpainter(loader.dataset)
+    elif args.gen_model_name == 'LocalMeanInpainter':
         inpainter = LocalMeanInpainter(ndim=1)
-    elif args.gen_model_name == 'MeanInpatinter':
+    elif args.gen_model_name == 'MeanInpainter':
         inpainter = MeanInpainter()
     else:
         assert False, 'unsupported gen model name'
+
+    dirname = './plots/{}'.format(args.gen_model_name)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    print(dirname)
 
 
     for i, (x, y) in enumerate(loader):

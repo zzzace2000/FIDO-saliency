@@ -23,8 +23,8 @@ def logsumexp(inputs, dim=None, keepdim=False):  # from https://github.com/pytor
     return diff.mean(dim, keepdim=keepdim)
 
 
-def random_mask(im_shape, p=0.1):
-    return torch.Tensor(np.random.binomial(1, p, size=im_shape)).unsqueeze(0)
+def random_mask(im_shape, p=0.1):  # p is the drop probability; m[i,j] = 0 means drop the pixel
+    return torch.Tensor(1. - np.random.binomial(1, p, size=im_shape)).unsqueeze(0)
 
 
 def random_mask_batch(batch_size, im_shape, p=0.1):
@@ -35,11 +35,11 @@ def random_half_block_mask(im_shape, label=None):
     """random half-block split vertically"""
     if label is None:
         label = np.random.choice(range(2*Blocks.num_labels))
-    block = np.zeros(im_shape)
+    block = np.ones(im_shape)  # mask[i, j] = 1 means keep the pixel
     row_start, row_end, col_start, col_end = Blocks._label_to_patch_pixels(
             label, Blocks.block_width, Blocks.block_width//2  # half stride
             )
-    block[row_start:row_end, col_start:col_end] += 1.  # the ground truth block
+    block[row_start:row_end, col_start:col_end] -= 1.  # the ground truth block
     # posterior conditioned on mask should be bimodal; don't mask edge pixels b/c there is no ambiguity
     offset = (-1 if label % int(Blocks.num_labels ** 0.5) < 2 else 1) * Blocks.block_width//2  
     offset_dim  = 1
@@ -101,33 +101,32 @@ class MixtureDataset(Dataset):
         observations and c is a class label"""
         return batch_bernoulli_logp(x, self.p_bIc[c, ...])
 
-    def logp_cIxm(self, x, m):
-        """log prob of classes within the masked region,
-        i.e., vector log p(c|x_m) where x_m are batched 
-        binary observations x masked by m and c all 
-        possible class labels"""
+    def logp_cIxr(self, x, r):
+        """log prob of classes within an observed region x_r,
+        i.e., vector log p(c|x_r) where x_r are batched binary
+        observations x within the pixel region r (one = "in region")
+        and c all possible class labels"""
         sum_pixels = lambda i: i.sum(-1).sum(-1).sum(-1)  # sum X, Y and chan
-        u = self.logp_xIc(x, 0).masked_select(m.byte()) 
         batched_logp_c = self.logp_c.unsqueeze(0).repeat(len(x), 1)
-        logp_xmIc = torch.stack([
-            sum_pixels(self.logp_xIc(x, i) * m) 
+        logp_xrIc = torch.stack([
+            sum_pixels(self.logp_xIc(x, i) * r)   # r[i,j]=1 means in-region 
             for i in range(Blocks.num_labels)], 1)
-        logp_cxm = logp_xmIc + batched_logp_c  # p(xm, c) at a fixed xm
-        return logp_cxm - logsumexp(logp_cxm, 1, keepdim=True)
+        logp_cxr = logp_xrIc + batched_logp_c  # p(x_r, c) at a fixed x_r
+        return logp_cxr - logsumexp(logp_cxr, 1, keepdim=True)
 
     def logp_xmIxnm(self, x, m, apply_mask=False):
-        """return matrix of log p(xm|x!m) where xm are binary batched
-        pixel observations x masked by m, and x!m are all
-        the other pixels. Note that this function preserves the 
-        shape of x and does not apply the mask"""
+        """log p(x_m|x!m) where x_m are binary batched pixel observations 
+        x masked by m (zero = "masked") and thus treated as latents, 
+        and x_!m are the other pixels, which we observe.  Note that this
+        function preserves the shape of x and does not apply the mask"""
         # log p(x_mIc): (all) unobserved pixel probs conditioned on labels
         logp_xmIc = torch.stack([ 
             #self.logp_xIc(x, i)  # mask not applied; do that later
             self.logp_bIc[None, i, ...].repeat(len(x), 1, 1, 1)
             for i in range(Blocks.num_labels)], 1)
 
-        # log p(c|x_!m): label probs conditioned on pixels not in mask
-        logp_cIxnm = self.logp_cIxm(x, 1.-m)  
+        # log p(c|x_!m): label probs conditioned on observed pixels (not in mask)
+        logp_cIxnm = self.logp_cIxr(x, m)  # m[i,j]=0 means mask, m[i,j]=condition region
         expand_pixels = lambda i: i[..., None, None, None]  # expand X, Y and chan
         # log p(x_m|x_!m) = log sum_c (log p(x_m|c) + log p(c|x_!m))
         logp_xmIxnm = logsumexp(

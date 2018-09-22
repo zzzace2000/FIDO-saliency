@@ -23,8 +23,8 @@ class TestBlocks(unittest.TestCase):
         for x, y in self.mob:
             im_shape = x.shape[-2:]
             mb = random_mask_batch(self.batch_size, im_shape, 0.1)
-            logp_cIxm = self.d.logp_cIxm(x, mb)
-            p_cIxm = logp_cIxm.exp()
+            logp_cIxr = self.d.logp_cIxr(x, mb)
+            p_cIxm = logp_cIxr.exp()
             self.assertAlmostEqual(
                     torch.norm(p_cIxm.sum(1) - torch.ones(self.batch_size)),
                     0., places=4)
@@ -36,27 +36,28 @@ class TestBlocks(unittest.TestCase):
                     )
             for x, y in mob:
                 im_shape = x.shape[-2:]
-                ones_mask = torch.ones_like(x)
-                zeros_mask = torch.zeros_like(x)
-                logp_cIxm_0 = data.logp_cIxm(x, zeros_mask)
-                logp_cIxm_1 = data.logp_cIxm(x, ones_mask)
-                cIxm_0 = torch.max(logp_cIxm_0 , 1)[1].float()
-                cIxm_1 = torch.max(logp_cIxm_1 , 1)[1].float()
-                self.assertAlmostEqual(torch.norm(y.squeeze() - cIxm_1), 0.0)
+                observed_region = torch.ones_like(x)  # observe all
+                latent_region = torch.zeros_like(x)  # don't observe any
+                logp_cIxr_observed = data.logp_cIxr(x, observed_region)
+                logp_cIxr_latent = data.logp_cIxr(x, latent_region)
+                cIxm_observed = torch.max(logp_cIxr_observed , 1)[1].float()
+                cIxm_latent = torch.max(logp_cIxr_latent , 1)[1].float()
+                self.assertAlmostEqual(torch.norm(y.squeeze() - cIxm_observed), 0.0)
                 self.assertAlmostEqual(
-                        torch.norm(logp_cIxm_0.exp() - \
+                        torch.norm(logp_cIxr_latent.exp() - \
                                 data.p_c.unsqueeze(0).repeat(self.batch_size, 1))
                             , 0.0, places=4)
                 break   
 
     def test_qualitative(self):  # this is a qualitative test; look at the plots
+        """evaluate p(x_m|x_!m) by looking at plots"""
         def half_mask(batch_size, im_shape, top=True):
             """mask top or botttom half"""
-            mask = torch.zeros(batch_size, 1, *im_shape)
+            mask = torch.ones(batch_size, 1, *im_shape)
             if top:
-                mask[:, :, :im_shape[0]//2, :] = 1.
+                mask[:, :, :im_shape[0]//2, :] = 0.
             else:
-                mask[:, :, im_shape[0]//2:, :] = 1.
+                mask[:, :, im_shape[0]//2:, :] = 0.
             return mask
 
         for x, y in self.mob:
