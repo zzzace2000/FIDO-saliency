@@ -281,12 +281,11 @@ if __name__ == '__main__':
     importance_func = eval(args.importance_method)
 
     # Load which impanting model you want to use
-    impant_model = utils_model.get_impant_model(args.gen_model_name, args.batch_size, args.gen_model_path)
-    #interpret_net = utils_model.get_pretrained_classifier(args.classifier)
     assert args.classifier in ['neuralnet', 'logisticregression'], 'unsupported classifier'
     interpret_net, dataset = utils.get_dataset_and_classifier(
             args.num_examples, args.batch_size, args.seed,
             neural_net=True if args.classifier == 'neuralnet' else False
             )
 
+    impant_model = utils_model.get_impant_model(args.gen_model_name, args.batch_size, args.gen_model_path, dataset=dataset)
     main(args, importance_func, impant_model, interpret_net, dataset)

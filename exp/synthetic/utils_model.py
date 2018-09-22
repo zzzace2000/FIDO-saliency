@@ -32,10 +32,10 @@ def get_pretrained_classifier(classifier_name, cuda_enabled=False):
     return interpret_net
 
 
-def get_impant_model(gen_model_name, batch_size=None, gen_model_path=None, cuda_enabled=False):
-    if gen_model_name == 'HeuristicInpainter':
-        from OracleInpainter import HeuristicInpainter
-        impant_model = HeuristicInpainter('median')
+def get_impant_model(gen_model_name, batch_size=None, gen_model_path=None, cuda_enabled=False, dataset=None):
+    if gen_model_name == 'OracleInpainter':
+        from OracleInpainter import OracleInpainter
+        impant_model = OracleInpainter(dataset)
     elif gen_model_name == 'MeanInpainter' or gen_model_name == 'LocalMeanInpainter' \
             or gen_model_name == 'BlurryInpainter' or gen_model_name == 'RandomColorWithNoiseInpainter':
 
