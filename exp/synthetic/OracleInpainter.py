@@ -35,7 +35,7 @@ class OracleInpainter(InpaintTemplate):
         betas = x.max(-1)[0].max(-1)[0].clamp(0., 1.).squeeze().numpy()  # max pixel value; a crude esitimate of beta
         infill = torch.stack([
             torch.Tensor(
-                MixtureOfBlocks.generate_image(beta, label)
+                MixtureOfBlocks.generate_component(beta, label)
                 ) for label, beta in zip(label_samps, betas)], 0)
         # 4) return mixture of mask*x and (1-masked)*infill
         #return (1. - mask)*x + mask*infill
