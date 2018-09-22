@@ -4,26 +4,25 @@ import torch
 from torchvision.utils import save_image
 import unittest
 
-from datasets import MixtureOfBlocks, mixture_of_blocks
-import OracleInpainter 
+from datasets import Blocks, mixture_of_shapes, random_mask_batch, random_half_block_mask_batch
 
 
-class TestMixtureOfBlocks(unittest.TestCase):
+class TestBlocks(unittest.TestCase):
     batch_size = 16
     uniform = True
     dirname = './plots/tests'
     if not os.path.exists(dirname):
         os.makedirs(dirname)
     if uniform:  # uniform mixture
-        mob, d = mixture_of_blocks(batch_size, batch_size)
+        mob, d = mixture_of_shapes(batch_size, batch_size)
     else:  # random mixture coeffs
-        mob, d = mixture_of_blocks(batch_size, batch_size, 
-                p_c=torch.randn(MixtureOfBlocks.num_labels).exp())
+        mob, d = mixture_of_shapes(batch_size, batch_size, 
+                p_c=torch.randn(Blocks.num_labels).exp())
 
     def test_valid_probs(self):
         for x, y in self.mob:
             im_shape = x.shape[-2:]
-            mb = OracleInpainter.random_mask_batch(self.batch_size, im_shape, 0.1)
+            mb = random_mask_batch(self.batch_size, im_shape, 0.1)
             logp_cIxm = self.d.logp_cIxm(x, mb)
             p_cIxm = logp_cIxm.exp()
             self.assertAlmostEqual(
@@ -31,8 +30,8 @@ class TestMixtureOfBlocks(unittest.TestCase):
                     0., places=4)
 
     def test_conditional_probs(self):
-        for p_c in [None, torch.randn(MixtureOfBlocks.num_labels).exp()]:
-            mob, data = mixture_of_blocks(
+        for p_c in [None, torch.randn(Blocks.num_labels).exp()]:
+            mob, data = mixture_of_shapes(
                     self.batch_size, self.batch_size, p_c=p_c
                     )
             for x, y in mob:
@@ -68,8 +67,8 @@ class TestMixtureOfBlocks(unittest.TestCase):
                         torch.ones_like(x),
                         half_mask(self.batch_size, im_shape, True),
                         half_mask(self.batch_size, im_shape, False),
-                        OracleInpainter.random_mask_batch(self.batch_size, im_shape),
-                        OracleInpainter.random_half_block_mask_batch(self.batch_size, im_shape, y.squeeze().long())]):
+                        random_mask_batch(self.batch_size, im_shape),
+                        random_half_block_mask_batch(self.batch_size, im_shape, y.squeeze().long())]):
                 logp_xmInm = self.d.logp_xmIxnm(x, m, False)
                 p_xmInm = logp_xmInm.exp()
                 save_image(m, 

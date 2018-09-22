@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from torch import nn
 np.set_printoptions(precision=3)
 
-from datasets import MixtureOfBlocks, mixture_of_blocks
+from datasets import Blocks, mixture_of_shapes
 
 
 if __name__ == '__main__':
@@ -17,7 +17,7 @@ if __name__ == '__main__':
     checkpoint_filename = 'foo.pth'
     train = False
 
-    loader, _ = mixture_of_blocks(num_samples, batch_size, seed)
+    loader, _ = mixture_of_shapes(num_samples, batch_size, seed)
     if True:  # neural net
         classifier = nn.Sequential(
                 nn.Linear(int(np.prod(im_shape)), 400),
@@ -26,11 +26,11 @@ if __name__ == '__main__':
                 nn.LeakyReLU(),
                 nn.Linear(200, 50),
                 nn.LeakyReLU(),
-                nn.Linear(50, MixtureOfBlocks.num_labels),
+                nn.Linear(50, Blocks.num_labels),
                 )
     else:  # logistic regression
         classifier = nn.Sequential(
-                nn.Linear(int(np.prod(im_shape)), MixtureOfBlocks.num_labels),
+                nn.Linear(int(np.prod(im_shape)), Blocks.num_labels),
                 )
     if train:  # train from scratch
         loss_fn = nn.CrossEntropyLoss()

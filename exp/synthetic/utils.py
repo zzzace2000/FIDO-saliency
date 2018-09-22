@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 
-from datasets import mixture_of_blocks, MixtureOfBlocks
+from datasets import Blocks, mixture_of_shapes
 
 
 class Squeeze(nn.Module):
@@ -22,7 +22,7 @@ def get_default_train_args():
 def get_dataset_and_classifier(num_examples, batch_size, seed=None, train_args=None, neural_net=True, verbose=False):
     """returns MixureOfBlocks dataset and trained classifier"""
     train_args = train_args or get_default_train_args()
-    loader, dataset = mixture_of_blocks(num_examples, batch_size, seed)
+    loader, dataset = mixture_of_shapes(num_examples, batch_size, seed)
     if neural_net:  # neural net
         classifier = nn.Sequential(
                 Squeeze(),
@@ -32,11 +32,11 @@ def get_dataset_and_classifier(num_examples, batch_size, seed=None, train_args=N
                 nn.LeakyReLU(),
                 nn.Linear(200, 50),
                 nn.LeakyReLU(),
-                nn.Linear(50, MixtureOfBlocks.num_labels),
+                nn.Linear(50, Blocks.num_labels),
                 )
     else:  # logistic regression
         classifier = nn.Sequential(Squeeze(), nn.Linear(
-            int(np.prod(train_args['im_shape'])), MixtureOfBlocks.num_labels
+            int(np.prod(train_args['im_shape'])), Blocks.num_labels
             ))
   
     loss_fn = nn.CrossEntropyLoss()
@@ -104,7 +104,7 @@ def get_imgnet_one_image_loader(
 
     train_loader = [(repeated_imgs, repeated_labels)]
 
-    img_filename = 'MixtureOfBlocks_{}'.format(img_index)
+    img_filename = 'Blocks-{}'.format(img_index)
 
     pred_img_class_name = str(pred_label)
     gt_img_class_name = str(gt_label)

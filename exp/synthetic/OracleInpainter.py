@@ -6,19 +6,20 @@ import torch.nn.functional as F
 import torchvision
 
 from median_pool import MedianPool2d
-from datasets import MixtureOfBlocks
+from datasets import Blocks, random_mask_batch, random_half_block_mask_batch
 from arch.Inpainting.Baseline import InpaintTemplate, BlurryInpainter, LocalMeanInpainter, MeanInpainter
 
 
-class OracleInpainter(InpaintTemplate):
+class HeuristicInpainter(InpaintTemplate):
     """Heuristic oracle inpainting for the mixture of blocks dataset"""
+    noise_level = 0.05
     def __init__(self, mode='median'):
-        super(OracleInpainter, self).__init__()
+        super(HeuristicInpainter, self).__init__()
         assert mode.lower() in ['median', 'avg', 'average'], 'unsupported mode'
         filter_class = MedianPool2d if mode.lower() == 'median' else torch.nn.AvgPool2d
         self.filt = filter_class(
-                kernel_size=MixtureOfBlocks.block_width,
-                stride=MixtureOfBlocks.block_width//2)
+                kernel_size=Blocks.block_width,
+                stride=Blocks.block_width//2)
 
 
     def impute_missing_imgs(self, x, mask):
@@ -35,16 +36,16 @@ class OracleInpainter(InpaintTemplate):
         betas = x.max(-1)[0].max(-1)[0].clamp(0., 1.).squeeze().numpy()  # max pixel value; a crude esitimate of beta
         infill = torch.stack([
             torch.Tensor(
-                MixtureOfBlocks.generate_component(beta, label)
+                Blocks.generate_component(beta, 0., label)
                 ) for label, beta in zip(label_samps, betas)], 0)
         # 4) return mixture of mask*x and (1-masked)*infill
         #return (1. - mask)*x + mask*infill
         return infill
 
     def infer_label_probs(self, x, mask, imshape=False):
-        xm =  (1. - mask)*x + mask*MixtureOfBlocks.noise_level*torch.randn(*mask.shape)
+        xm =  (1. - mask)*x + mask*HeuristicInpainter.noise_level*torch.randn(*mask.shape)
         logits = self.filt(Variable(xm))
-        off = MixtureOfBlocks.offset
+        off = Blocks.offset
         logits = logits[:, :, 1:-1, 1:-1].contiguous()  # cut down to 4x4
         label_probs = F.softmax(logits.view(len(x), -1), 1).detach()
         # heuristic: draw from only the top two labels
@@ -56,37 +57,6 @@ class OracleInpainter(InpaintTemplate):
         else:
             return label_probs
 
-
-def random_mask(im_shape, p=0.1):
-    return torch.Tensor(np.random.binomial(1, p, size=im_shape)).unsqueeze(0)
-
-
-def random_mask_batch(batch_size, im_shape, p=0.1):
-    return torch.stack([random_mask(im_shape, p) for _ in range(batch_size)], 0)
-
-
-def random_half_block_mask(im_shape, label=None):
-    """random half-block split vertically"""
-    if label is None:
-        label = np.random.choice(range(2*MixtureOfBlocks.num_labels))
-    block = np.zeros(im_shape)
-    row_start, row_end, col_start, col_end = MixtureOfBlocks._label_to_patch_pixels(
-            label, MixtureOfBlocks.block_width, MixtureOfBlocks.block_width//2  # half stride
-            )
-    block[row_start:row_end, col_start:col_end] += 1.  # the ground truth block
-    #offset = np.random.choice((-1, 1))*MixtureOfBlocks.block_width//2
-    # posterior conditioned on mask should be bimodal; don't mask edge pixels b/c there is no ambiguity
-    offset = (-1 if label % int(MixtureOfBlocks.num_labels ** 0.5) < 2 else 1) * MixtureOfBlocks.block_width//2  
-    offset_dim  = 1
-    mask = block * np.roll(block, offset, offset_dim)
-    mask += (1-block) * np.roll(block, -offset, offset_dim)
-    return torch.Tensor(mask).unsqueeze(0)
-
-
-def random_half_block_mask_batch(batch_size, im_shape, labels=None):
-    if labels is None:
-        labels = [None for _ in range(batch_size)]
-    return torch.stack([random_half_block_mask(im_shape, l) for l in labels], 0)
 
 
 def parse_args():
@@ -101,8 +71,8 @@ def parse_args():
                         help='random seed (default: 1)')
     parser.add_argument('--plot', action='store_true', default=False)
     parser.add_argument('--gen-model-name', type=str,
-                        default='OracleInpainter',
-                        help='choose from [OracleInpainter, MeanInpainter, LocalMeanInpainter]')
+                        default='HeuristicInpainter',
+                        help='choose from [HeuristicInpainter, MeanInpainter, LocalMeanInpainter]')
     parser.add_argument('--mask-name', type=str,
                         default='halfblock',
                         help='choose from [halfblock, random]')
@@ -120,26 +90,26 @@ if __name__ == '__main__':
     import os
     from torchvision.utils import save_image
 
-    dirname = './plots/OracleInpainter'
+    dirname = './plots/HeuristicInpainter'
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 
-    from datasets import mixture_of_blocks
+    from datasets import mixture_of_shapes
 
     args = parse_args()
 
-    loader, _ = mixture_of_blocks(args.num_examples, args.batch_size, args.seed)
+    loader, _ = mixture_of_shapes(args.num_examples, args.batch_size, args.seed)
     if args.mode == 'median':
         filter_class = MedianPool2d
     else:
         filter_class = torch.nn.AvgPool2d
     filt = filter_class(
-            kernel_size=MixtureOfBlocks.block_width,
-            stride=MixtureOfBlocks.block_width//2)
-    f = lambda x: filt(Variable(x + MixtureOfBlocks.noise_level*torch.randn(*x.shape)))  # annoying workaround...
+            kernel_size=Blocks.block_width,
+            stride=Blocks.block_width//2)
+    f = lambda x: filt(Variable(x + HeuristicInpainter.noise_level*torch.randn(*x.shape)))  # annoying workaround...
 
-    if args.gen_model_name == 'OracleInpainter':
-        inpainter = OracleInpainter(args.mode)
+    if args.gen_model_name == 'HeuristicInpainter':
+        inpainter = HeuristicInpainter(args.mode)
     elif args.gen_model_name == 'LocalMeanInpatinter':
         inpainter = LocalMeanInpainter(ndim=1)
     elif args.gen_model_name == 'MeanInpatinter':
@@ -158,7 +128,7 @@ if __name__ == '__main__':
         else:
             assert False, 'unsupported mask name'
 
-        if isinstance(inpainter, OracleInpainter):
+        if isinstance(inpainter, HeuristicInpainter):
             pl = inpainter.infer_label_probs(x, mb, True).data
         z = inpainter.impute_missing_imgs(x, mb)
         xm = x*(1. - mb)
@@ -177,7 +147,7 @@ if __name__ == '__main__':
                     #nrow=int(args.batch_size ** 0.5), pad_value=1., range=[0., 1.])
             save_image(x, '{}/masked-blocks-{}-x.png'.format(dirname, i), 
                     nrow=int(args.batch_size ** 0.5), pad_value=1., range=[0., 1.])
-            if isinstance(inpainter, OracleInpainter):
+            if isinstance(inpainter, HeuristicInpainter):
                 save_image(pl, '{}/masked-blocks-{}-probs.png'.format(dirname, i), 
                         nrow=int(args.batch_size ** 0.5), pad_value=1., range=[0., 1.])
             save_image(z, '{}/masked-blocks-{}-impute.png'.format(dirname, i), 

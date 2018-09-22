@@ -13,58 +13,72 @@ def batch_bernoulli_logp(x, p):
     logp_x = torch.stack([px.log_prob(xx) for xx in x], 0)
     return logp_x.unsqueeze(1) if x_is_im else logp_x
 
-class MixtureOfBlocks(Dataset):
-    im_shape = (1, 28, 28)
+
+def logsumexp(inputs, dim=None, keepdim=False):  # from https://github.com/pytorch/pytorch/issues/2591
+    import torch.nn.functional as F
+    from torch.autograd import Variable
+    diff = inputs - F.log_softmax(
+            Variable(inputs, requires_grad=False), dim=dim
+            ).data
+    return diff.mean(dim, keepdim=keepdim)
+
+
+def random_mask(im_shape, p=0.1):
+    return torch.Tensor(np.random.binomial(1, p, size=im_shape)).unsqueeze(0)
+
+
+def random_mask_batch(batch_size, im_shape, p=0.1):
+    return torch.stack([random_mask(im_shape, p) for _ in range(batch_size)], 0)
+
+
+def random_half_block_mask(im_shape, label=None):
+    """random half-block split vertically"""
+    if label is None:
+        label = np.random.choice(range(2*Blocks.num_labels))
+    block = np.zeros(im_shape)
+    row_start, row_end, col_start, col_end = Blocks._label_to_patch_pixels(
+            label, Blocks.block_width, Blocks.block_width//2  # half stride
+            )
+    block[row_start:row_end, col_start:col_end] += 1.  # the ground truth block
+    # posterior conditioned on mask should be bimodal; don't mask edge pixels b/c there is no ambiguity
+    offset = (-1 if label % int(Blocks.num_labels ** 0.5) < 2 else 1) * Blocks.block_width//2  
+    offset_dim  = 1
+    mask = block * np.roll(block, offset, offset_dim)
+    mask += (1-block) * np.roll(block, -offset, offset_dim)
+    return torch.Tensor(mask).unsqueeze(0)
+
+
+def random_half_block_mask_batch(batch_size, im_shape, labels=None):
+    if labels is None:
+        labels = [None for _ in range(batch_size)]
+    return torch.stack([random_half_block_mask(im_shape, l) for l in labels], 0)
+
+
+class MixtureDataset(Dataset):
+    """labeled dataset drawn from a mixture of components 
+    each input is a (binary) greyscale image whose label 
+    is the component index"""
     num_labels = 16
-    block_width = 8  # edge size of block in pixels
-    noise_level = .05
-    offset = 4  # row/column offset from edges
+    im_shape = (1, 28, 28)
 
     def __init__(self, num_samples, train=True, p_c=None):
-        super(MixtureOfBlocks, self).__init__()
+        super(MixtureDataset, self).__init__()
         if p_c is None:
             p_c = torch.ones(self.num_labels)
         assert (p_c >= 0.).all(), 'probs must be >=0'
         self.p_c = p_c / p_c.sum()
-
         self.logp_bIc = self.compute_logp_bIc()  # CxDxD matrix of ground truth bernoulli probs per class
         samples, labels = self.sample_data(num_samples)
         self.samples, self.labels = torch.Tensor(samples), torch.Tensor(labels).unsqueeze(1)
         self.train = train  # for bookeeping purposes
         self.num_samples = num_samples
 
-    @staticmethod
-    def generate_component(component_val, background_val, label):
-        """
-        generates a block whose position is determined by label
-        inside the block pixels take component_val; otherwise they take background_val
-        we use this to produce B_ic; samples are drawn from p(x|c) = Prod_ij Bernoulli(B_ic)
-        """
-        im = background_val*np.ones(MixtureOfBlocks.im_shape)
-        row_start, row_end, col_start, col_end = MixtureOfBlocks._label_to_patch_pixels(
-                label, MixtureOfBlocks.block_width, MixtureOfBlocks.block_width//2
-                )
-        im[0, row_start:row_end, col_start:col_end] = component_val 
-        return im
-
-    @staticmethod
-    def _label_to_patch_pixels(label, block_width, stride):
-        n_blocks_per_edge = int(MixtureOfBlocks.num_labels ** 0.5)
-        row_idx = label // n_blocks_per_edge
-        col_idx = label % n_blocks_per_edge
-        row_start = row_idx*stride+MixtureOfBlocks.offset
-        row_end = row_start+block_width
-        col_start = col_idx*stride+MixtureOfBlocks.offset
-        col_end = col_start+block_width 
-        return row_start, row_end, col_start, col_end
-
-    # TODO write a super class that uses compute_bIc and generate_samples and requires implementing generate_component
     def compute_logp_bIc(self):  # ground truth bernoulli probs per class
         p = 0.95  # hard coded bernoulli prob for inside block
         return torch.stack(torch.Tensor(
-            [MixtureOfBlocks.generate_component(
+            [Blocks.generate_component(
                 np.log(p), np.log(1. - p), i
-                ) for i in range(MixtureOfBlocks.num_labels)]
+                ) for i in range(Blocks.num_labels)]
             ), 0).squeeze(1)
 
     @property
@@ -97,9 +111,9 @@ class MixtureOfBlocks(Dataset):
         batched_logp_c = self.logp_c.unsqueeze(0).repeat(len(x), 1)
         logp_xmIc = torch.stack([
             sum_pixels(self.logp_xIc(x, i) * m) 
-            for i in range(MixtureOfBlocks.num_labels)], 1)
+            for i in range(Blocks.num_labels)], 1)
         logp_cxm = logp_xmIc + batched_logp_c  # p(xm, c) at a fixed xm
-        return logp_cxm - self.logsumexp(logp_cxm, 1, keepdim=True)
+        return logp_cxm - logsumexp(logp_cxm, 1, keepdim=True)
 
     def logp_xmIxnm(self, x, m, apply_mask=False):
         """return matrix of log p(xm|x!m) where xm are binary batched
@@ -110,34 +124,19 @@ class MixtureOfBlocks(Dataset):
         logp_xmIc = torch.stack([ 
             #self.logp_xIc(x, i)  # mask not applied; do that later
             self.logp_bIc[None, i, ...].repeat(len(x), 1, 1, 1)
-            for i in range(MixtureOfBlocks.num_labels)], 1)
+            for i in range(Blocks.num_labels)], 1)
 
         # log p(c|x_!m): label probs conditioned on pixels not in mask
         logp_cIxnm = self.logp_cIxm(x, 1.-m)  
         expand_pixels = lambda i: i[..., None, None, None]  # expand X, Y and chan
         # log p(x_m|x_!m) = log sum_c (log p(x_m|c) + log p(c|x_!m))
-        logp_xmIxnm = self.logsumexp(
+        logp_xmIxnm = logsumexp(
                 expand_pixels(logp_cIxnm) + logp_xmIc,
                 1)
         if apply_mask:
             return logp_xmIxnm * (1. - m)
         else:
             return logp_xmIxnm
-
-    def logsumexp(self, inputs, dim=None, keepdim=False):  # from https://github.com/pytorch/pytorch/issues/2591
-        import torch.nn.functional as F
-        from torch.autograd import Variable
-        diff = inputs - F.log_softmax(
-                Variable(inputs, requires_grad=False), dim=dim
-                ).data
-        return diff.mean(dim, keepdim=keepdim)
-
-    def exact_marginalization(self, x, mask):
-        """return p(x_masked|x_not_masked)"""
-
-        return self.logsumexp(
-                1/0  # logp(x_masked|c) + logp(c|x_not_masked)
-                )
 
     def __len__(self):
         return self.num_samples
@@ -147,14 +146,47 @@ class MixtureOfBlocks(Dataset):
         return x, y
 
 
-def mixture_of_blocks(num_samples, batch_size, seed=None, 
+class Blocks(MixtureDataset):
+    block_width = 8  # edge size of block in pixels
+    offset = 4  # row/column offset from edges
+
+    @staticmethod
+    def generate_component(component_val, background_val, label):
+        """
+        generates a block whose position is determined by label
+        inside the block pixels take component_val; otherwise they take background_val
+        we use this to produce B_ic; samples are drawn from p(x|c) = Prod_ij Bernoulli(B_ic)
+        """
+        im = background_val*np.ones(Blocks.im_shape)
+        row_start, row_end, col_start, col_end = Blocks._label_to_patch_pixels(
+                label, Blocks.block_width, Blocks.block_width//2
+                )
+        im[0, row_start:row_end, col_start:col_end] = component_val 
+        return im
+
+    @staticmethod
+    def _label_to_patch_pixels(label, block_width, stride):
+        n_blocks_per_edge = int(Blocks.num_labels ** 0.5)
+        row_idx = label // n_blocks_per_edge
+        col_idx = label % n_blocks_per_edge
+        row_start = row_idx*stride+Blocks.offset
+        row_end = row_start+block_width
+        col_start = col_idx*stride+Blocks.offset
+        col_end = col_start+block_width 
+        return row_start, row_end, col_start, col_end
+
+
+def mixture_of_shapes(num_samples, batch_size, seed=None, 
         use_cuda=torch.cuda.is_available(),
-        p_c=None):
+        p_c=None,
+        shape_name='Blocks',
+        **dataset_kwargs):
     """get a mixture-of-blocks toy dataset loader"""
     if seed is not None:
         torch.manual_seed(seed)
     loader_kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
-    dataset = MixtureOfBlocks(num_samples, train=True, p_c=p_c)
+    dataset_class = eval(shape_name)
+    dataset = dataset_class(num_samples, train=True, p_c=p_c, **dataset_kwargs)
     train_loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=batch_size, 
@@ -167,7 +199,8 @@ if __name__ == '__main__':
     import os
     from torchvision.utils import save_image
 
-    dirname = './plots/MixtureOfBlocks'
+    shape_name = 'Blocks'
+    dirname = './plots/{}'.format(shape_name)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 
@@ -175,9 +208,9 @@ if __name__ == '__main__':
     batch_size = 16
     seed = 0
 
-    mob, d = mixture_of_blocks(num_samples, batch_size, seed)
+    mob, d = mixture_of_shapes(num_samples, batch_size, seed)
     print(d.p_bIc.shape)
-    save_image(d.p_bIc.unsqueeze(1), '{}/bIc.png'.format(dirname), nrow=int(MixtureOfBlocks.num_labels ** 0.5))
+    save_image(d.p_bIc.unsqueeze(1), '{}/bIc.png'.format(dirname), nrow=int(Blocks.num_labels ** 0.5))
     for i, (x, y) in enumerate(mob):
         print(i, x.shape, torch.norm(x), y)
         save_image(x, '{}/foo{}.png'.format(dirname, i), nrow=int(batch_size ** 0.5))
