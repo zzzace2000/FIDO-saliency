@@ -229,7 +229,8 @@ if __name__ == '__main__':
                       trained_classifier=interpret_net, generative_model=impant_model, loss_criteria=log_odds_loss,
                       ard_init=1., lr=args.lr, reg_coef=args.reg_coef, tv_coef=args.tv_coef, rw_max=1,
                       cuda_enabled=args.cuda, verbose=args.verbose,
-                      upsample_to_size=(224, 224), visdom_enabled=args.visdom_enabled)
+                      #upsample_to_size=(224, 224), visdom_enabled=args.visdom_enabled)
+                      upsample_to_size=(28, 28), visdom_enabled=args.visdom_enabled)  # hacking
         net.fit(new_loader, epochs=args.epochs, epoch_print=args.epoch_print)
 
         # Visualize by mask

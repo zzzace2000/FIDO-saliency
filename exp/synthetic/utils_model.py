@@ -1,6 +1,6 @@
 import torch
 from arch.Inpainting.Baseline import BlurryInpainter, LocalMeanInpainter, MeanInpainter, \
-    RandomColorWithNoiseInpainter
+    RandomGreyscaleBernoulliInpainter
 
 from arch.Inpainting.AE_Inpainting import ImpantingModel
 from arch.Inpainting.AE_Inpainting import VAEImpantModel, VAEWithVarImpantModelMean
@@ -37,11 +37,16 @@ def get_impant_model(gen_model_name, batch_size=None, gen_model_path=None, cuda_
         from OracleInpainter import OracleInpainter
         impant_model = OracleInpainter(dataset)
     elif gen_model_name == 'MeanInpainter' or gen_model_name == 'LocalMeanInpainter' \
-            or gen_model_name == 'BlurryInpainter' or gen_model_name == 'RandomColorWithNoiseInpainter':
+            or gen_model_name == 'BlurryInpainter' or gen_model_name == 'RandomGreyscaleBernoulliInpainter':
 
         impant_model_obj = eval(gen_model_name)
         #impant_model = impant_model_obj()
-        model_kwargs = dict(ndim=1) if gen_model_name == 'LocalMeanInpainter' else dict()  # some hacking for 1d images
+        if gen_model_name == 'LocalMeanInpainter':
+            model_kwargs = dict(ndim=1)  # some hacking for 1d images
+        elif gen_model_name == 'RandomGreyscaleBernoulliInpainter':
+            model_kwargs = dict(p=0.5)
+        else:
+            model_kwargs = dict()
         impant_model = impant_model_obj(**model_kwargs)  # hacking
     elif gen_model_name == 'CAInpainter':
         from generative_inpainting.CAInpainter import CAInpainter

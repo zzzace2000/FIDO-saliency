@@ -81,8 +81,10 @@ class BlurryInpainter(InpaintTemplate):
 
         np_img = pytorch_img.permute(1, 2, 0).cpu().numpy()[:, :, ::-1]
         background = cv2.GaussianBlur(np_img, (0, 0), 10)
+        if background.ndim == 2:  # hack for single channel images
+            #import numpy as np
+            background = background[:, :, None]
         background = background[:, :, ::-1].tolist()
-
         py_back_img = pytorch_img.new(background).permute(2, 0, 1)
         return py_back_img
 
@@ -105,6 +107,20 @@ class RandomColorWithNoiseInpainter(InpaintTemplate):
         for c in [0, 1, 2]:
             random_img[:, c, :, :].sub_(self.color_mean[c]).div_(self.color_std[c])
         return random_img
+
+
+class RandomGreyscaleBernoulliInpainter(InpaintTemplate):
+    def __init__(self, p=0.5):
+        super(RandomGreyscaleBernoulliInpainter, self).__init__()
+        self.p = p
+
+    def impute_missing_imgs(self, x, mask):
+        background = self.generate_background(x, mask)
+        return x * mask + background * (1. - mask)
+
+    def generate_background(self, x, mask):
+        probs = self.p * torch.ones_like(x)
+        return torch.distributions.Bernoulli(probs).sample()
 
 
 if __name__ == '__main__':
