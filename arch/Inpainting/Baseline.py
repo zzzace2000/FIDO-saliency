@@ -58,8 +58,9 @@ class LocalMeanInpainter(InpaintTemplate):
 
 
 class BlurryInpainter(InpaintTemplate):
-    def __init__(self):
+    def __init__(self, sigma):
         super(BlurryInpainter, self).__init__()
+        self.sigma = sigma  # std dev of Gaussian kernel
         self.blurred_img = None
 
     def reset(self):
@@ -75,12 +76,11 @@ class BlurryInpainter(InpaintTemplate):
             self.blurred_img = self.blurred_img.unsqueeze(0)
         return self.blurred_img
 
-    @staticmethod
-    def blur_pytorch_img(pytorch_img):
+    def blur_pytorch_img(self, pytorch_img):
         assert pytorch_img.ndimension() == 3
 
         np_img = pytorch_img.permute(1, 2, 0).cpu().numpy()[:, :, ::-1]
-        background = cv2.GaussianBlur(np_img, (0, 0), 10)
+        background = cv2.GaussianBlur(np_img, (0, 0), self.sigma)
         if background.ndim == 2:  # hack for single channel images
             #import numpy as np
             background = background[:, :, None]
