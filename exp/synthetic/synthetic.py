@@ -117,6 +117,9 @@ def parse_args():
                         default='ImpantingModel',
                         help='choose from [ImpantingModel, VAEImpantModel, VAEWithVarImpantModel,'
                              'VAEWithVarImpantModelMean, MeanInpainter, LocalMeanInpainter]')
+    parser.add_argument('--shape-name', type=str,
+                        default='Blocks',
+                        help='choose from [Blocks, Dots]')
     parser.add_argument('--dataset', type=str, default='valid/',
                         help='Choose from train/ or valid/')
     parser.add_argument('--save-dir', type=str, default='./imgs/hole_model_0.01/',
@@ -285,7 +288,8 @@ if __name__ == '__main__':
     assert args.classifier in ['neuralnet', 'logisticregression'], 'unsupported classifier'
     interpret_net, dataset = utils.get_dataset_and_classifier(
             args.num_examples, args.batch_size, args.seed,
-            neural_net=True if args.classifier == 'neuralnet' else False
+            neural_net=True if args.classifier == 'neuralnet' else False,
+            shape_name=args.shape_name
             )
 
     impant_model = utils_model.get_impant_model(args.gen_model_name, args.batch_size, args.gen_model_path, dataset=dataset)

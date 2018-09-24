@@ -43,8 +43,10 @@ def get_impant_model(gen_model_name, batch_size=None, gen_model_path=None, cuda_
         #impant_model = impant_model_obj()
         if gen_model_name == 'LocalMeanInpainter':
             model_kwargs = dict(ndim=1)  # some hacking for 1d images
+        elif gen_model_name == 'BlurryInpainter':
+            model_kwargs = dict(sigma=2)  # use a narrower kernel since the image size is smaller
         elif gen_model_name == 'RandomGreyscaleBernoulliInpainter':
-            model_kwargs = dict(p=0.5)
+            model_kwargs = dict(p=0.2)  # TODO: compute background probability over dataset
         else:
             model_kwargs = dict()
         impant_model = impant_model_obj(**model_kwargs)  # hacking

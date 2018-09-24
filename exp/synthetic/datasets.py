@@ -74,12 +74,15 @@ class MixtureDataset(Dataset):
         self.num_samples = num_samples
 
     def compute_logp_bIc(self):  # ground truth bernoulli probs per class
-        p = 0.95  # hard coded bernoulli prob for inside block
+        p = .995  # hard coded bernoulli prob for inside block
         return torch.stack(torch.Tensor(
-            [Blocks.generate_component(
+            [self.generate_component(
                 np.log(p), np.log(1. - p), i
-                ) for i in range(Blocks.num_labels)]
+                ) for i in range(self.num_labels)]
             ), 0).squeeze(1)
+
+    def generate_component(self, component_val, background_val, label):
+        raise NotImplementedError 
 
     @property
     def p_bIc(self):
@@ -110,7 +113,7 @@ class MixtureDataset(Dataset):
         batched_logp_c = self.logp_c.unsqueeze(0).repeat(len(x), 1)
         logp_xrIc = torch.stack([
             sum_pixels(self.logp_xIc(x, i) * r)   # r[i,j]=1 means in-region 
-            for i in range(Blocks.num_labels)], 1)
+            for i in range(self.num_labels)], 1)
         logp_cxr = logp_xrIc + batched_logp_c  # p(x_r, c) at a fixed x_r
         return logp_cxr - logsumexp(logp_cxr, 1, keepdim=True)
 
@@ -123,7 +126,7 @@ class MixtureDataset(Dataset):
         logp_xmIc = torch.stack([ 
             #self.logp_xIc(x, i)  # mask not applied; do that later
             self.logp_bIc[None, i, ...].repeat(len(x), 1, 1, 1)
-            for i in range(Blocks.num_labels)], 1)
+            for i in range(self.num_labels)], 1)
 
         # log p(c|x_!m): label probs conditioned on observed pixels (not in mask)
         logp_cIxnm = self.logp_cIxr(x, m)  # m[i,j]=0 means mask, m[i,j]=condition region
@@ -149,14 +152,13 @@ class Blocks(MixtureDataset):
     block_width = 8  # edge size of block in pixels
     offset = 4  # row/column offset from edges
 
-    @staticmethod
-    def generate_component(component_val, background_val, label):
+    def generate_component(self, component_val, background_val, label):
         """
         generates a block whose position is determined by label
         inside the block pixels take component_val; otherwise they take background_val
         we use this to produce B_ic; samples are drawn from p(x|c) = Prod_ij Bernoulli(B_ic)
         """
-        im = background_val*np.ones(Blocks.im_shape)
+        im = background_val*np.ones(self.im_shape)
         row_start, row_end, col_start, col_end = Blocks._label_to_patch_pixels(
                 label, Blocks.block_width, Blocks.block_width//2
                 )
@@ -173,6 +175,24 @@ class Blocks(MixtureDataset):
         col_start = col_idx*stride+Blocks.offset
         col_end = col_start+block_width 
         return row_start, row_end, col_start, col_end
+
+class Dots(MixtureDataset):
+    dot_width = 4
+    num_labels = 4
+    dots = ((3, 3),  # upper-left pixel of each dot
+            (3, 15),
+            (10, 11),
+            (10, 23),
+            (17, 3),
+            (17, 15),
+            (24, 11),
+            (24, 23))
+    def generate_component(self, component_val, background_val, label):
+        im = background_val*np.ones(self.im_shape)
+        dots_at_label = self.dots[:2*(label+1)]
+        for x, y in dots_at_label:
+            im[0, x:x+self.dot_width, y:y+self.dot_width] = component_val
+        return im
 
 
 def mixture_of_shapes(num_samples, batch_size, seed=None, 
@@ -198,7 +218,7 @@ if __name__ == '__main__':
     import os
     from torchvision.utils import save_image
 
-    shape_name = 'Blocks'
+    shape_name = 'Dots'
     dirname = './plots/{}'.format(shape_name)
     if not os.path.exists(dirname):
         os.makedirs(dirname)
@@ -207,7 +227,7 @@ if __name__ == '__main__':
     batch_size = 16
     seed = 0
 
-    mob, d = mixture_of_shapes(num_samples, batch_size, seed)
+    mob, d = mixture_of_shapes(num_samples, batch_size, seed, shape_name=shape_name)
     print(d.p_bIc.shape)
     save_image(d.p_bIc.unsqueeze(1), '{}/bIc.png'.format(dirname), nrow=int(Blocks.num_labels ** 0.5))
     for i, (x, y) in enumerate(mob):

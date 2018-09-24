@@ -19,10 +19,10 @@ def get_default_train_args():
         checkpoint_filename = 'foo.pth',
     )
 
-def get_dataset_and_classifier(num_examples, batch_size, seed=None, train_args=None, neural_net=True, verbose=False):
+def get_dataset_and_classifier(num_examples, batch_size, seed=None, train_args=None, neural_net=True, verbose=False, shape_name='Blocks'):
     """returns MixureOfBlocks dataset and trained classifier"""
     train_args = train_args or get_default_train_args()
-    loader, dataset = mixture_of_shapes(num_examples, batch_size, seed)
+    loader, dataset = mixture_of_shapes(num_examples, batch_size, seed, shape_name=shape_name)
     if neural_net:  # neural net
         classifier = nn.Sequential(
                 Squeeze(),
