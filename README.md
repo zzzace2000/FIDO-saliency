@@ -1,9 +1,8 @@
-# Explaining Image Classifiers by Adaptive Dropout and Generative In-filling 	
+# Explaining Image Classifiers by Counterfactual Generation
 
 [ArXiv](https://arxiv.org/abs/1807.08024) | [BibTex](#citing)
 
 This is the code for reproducing the paper result. We show that using generative model could help explain neural network compared to other heuristics approach.
-
 
 ## Run
 0. Requirements:
