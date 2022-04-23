@@ -2,7 +2,8 @@
 
 [ArXiv](https://arxiv.org/abs/1807.08024) | [BibTex](#citing)
 
-This is the code for reproducing the paper result. We show that using generative model could help explain neural network compared to other heuristics approach.
+Note: this repo is deprecated. See another repo that reproduces our method:
+https://github.com/zphang/saliency_investigation
 
 ## Run
 0. Requirements:
